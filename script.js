@@ -121,10 +121,10 @@ function move(k){
                 board.turn=1;
                 history.push(k+i);
             }
-            //console.log("move",k+i,board.turn);
-            break;
+            return k+i
         }
     }
+    return -1; // 無効な手
 }
 
 function draw_stones(){
@@ -173,9 +173,11 @@ function on_click(e){
         let o_name= intersects[0].object.name;
         let j=Number(o_name);
         if(j>=0 && j<25 && o_name!=""){
-            move(j);
+            let last_pos=move(j);
             draw_stones();
-            // board_id.innerText="# "+j; ← ここは draw_stones で手番表示するので不要
+            if(win_check(last_pos)) {
+                board_id.innerText = (board.turn === -1 ? "Black" : "White") + " wins!";
+            }
         }
     }
 }
@@ -212,45 +214,112 @@ function on_clear(){
     draw_stones();
 }
 
+function createLegalMoves(){
+    let legalMoves = [];
+    for(let i=0;i<25;i++){
+        if(((board.black | board.white) & (1n << BigInt(i)))== 0n){
+            legalMoves.push(i);
+        }
+    }
+    console.log("Legal Moves:", legalMoves);
+    return legalMoves;
+}
+
 function random_move(){
-    let legalmove=makeLegalMove();
+    let legalmove=createLegalMoves();
     let length=legalmove.length
+    let last_pos = -1; // 最後の手を記録する変数
     if(length>0){
         let randomIndex = Math.floor(Math.random()*length);
-        move(legalmove[randomIndex]);
+        last_pos=move(legalmove[randomIndex]);
+        return last_pos;
     }
+    return -1; // もし合法手がなければ-1を返す
 }
 
 function on_random(){
-    random_move();
+    let last_pos = random_move();
+    if(win_check(last_pos)) {
+        board_id.innerText = (board.turn === -1 ? "Black" : "White") + " wins!";
+    }
     draw_stones();
 }
 
-
-function win_check(){
-    for(let i=0;i<winPatterns.length;i++){
-        if(board[winPatterns[i][0]]==black
-            && board[winPatterns[i][1]]==black
-            && board[winPatterns[i][2]]==black
-            && board[winPatterns[i][3]]==black
-        ){
-            return black;
+function win_check(last_pos) {
+    let bitboard = board.turn === -1 ? board.black : board.white;
+    for (const pattern of WIN_PATTERNS_PER_CELL[last_pos]) {
+        if ((bitboard & pattern) === pattern) {
+            return true;
         }
-        if(board[winPatterns[i][0]]==white
-            && board[winPatterns[i][1]]==white
-            && board[winPatterns[i][2]]==white
-            && board[winPatterns[i][3]]==white
-        ){
-            return white;
-        }
-     }
-     return 0;
+    }
+    return false;
 }
-
 
 function on_cpu(){
 
 }
+
+
+
+// --- 勝ちパターン生成（各セルごとに、そのセルを含むパターンのみ保持） ---
+function generateWinPatternsPerCell() {
+    const size = 5;
+    const directions = [
+        [1, 0, 0],  // x方向
+        [0, 1, 0],  // y方向
+        [0, 0, 1],  // z方向
+        [1, 1, 0],  // x+y
+        [1, 0, 1],  // x+z
+        [0, 1, 1],  // y+z
+        [1, 1, 1],  // x+y+z
+        [1, -1, 0], // x-y
+        [1, 0, -1], // x-z
+        [0, 1, -1], // y-z
+        [1, -1, 1], // x-y+z
+        [1, 1, -1], // x+y-z
+        [1, -1, -1] // x-y-z
+    ];
+    // 125個のセルごとに配列を用意
+    const patternsPerCell = Array(125).fill(0).map(() => []);
+    for (let x = 0; x < size; x++) {
+        for (let y = 0; y < size; y++) {
+            for (let z = 0; z < size; z++) {
+                for (const [dx, dy, dz] of directions) {
+                    let cells = [];
+                    for (let k = 0; k < 4; k++) {
+                        let nx = x + dx * k;
+                        let ny = y + dy * k;
+                        let nz = z + dz * k;
+                        if (
+                            nx >= 0 && nx < size &&
+                            ny >= 0 && ny < size &&
+                            nz >= 0 && nz < size
+                        ) {
+                            cells.push(nx + ny * size + nz * size * size);
+                        }
+                    }
+                    if (cells.length === 4) {
+                        // ビットボード化
+                        let pattern = 0n;
+                        for (const idx of cells) {
+                            pattern |= (1n << BigInt(idx));
+                        }
+                        // このパターンに含まれる全セルに追加
+                        for (const idx of cells) {
+                            patternsPerCell[idx].push(pattern);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return patternsPerCell;
+}
+
+// グローバルで一度だけ生成
+const WIN_PATTERNS_PER_CELL = generateWinPatternsPerCell();
+
+console.log(WIN_PATTERNS_PER_CELL[0]); // 例としてセル0のパターンを表示
 
 // 初期化時にも手番を表示
 draw_stones();
