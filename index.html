@@ -8,9 +8,7 @@
         <script type="module">
             import * as THREE from 'https://unpkg.com/three@0.152.2/build/three.module.js';
         </script>
-        <script type="module">
-            import './script.js';
-        </script>
+        <script type="module" src="./script.js"></script>
      </head>
     <body>
         <canvas id="cv"></canvas>
@@ -20,5 +18,7 @@
         <button id="bt_cpu">cpu</button>
         <button id="bt_playout">playout</button>
         <div id="board_id">0</div>
+        <!-- プログレスバーは常に表示されるように display:none を削除 -->
+        <progress id="progressBar" value="0" max="100"></progress>
     </body>
 </html>

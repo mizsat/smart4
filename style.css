@@ -11,3 +11,7 @@
 canvas {
    display: block;
 }
+
+#progressBar {
+    width: 200px;
+}

@@ -9,6 +9,8 @@ const bt_cpu = document.getElementById('bt_cpu');
 const bt_playout = document.getElementById('bt_playout');
 const board_id = document.getElementById('board_id');
 const cv = document.getElementById('cv');
+const progressBar = document.getElementById('progressBar'); // プログレスバー要素を取得
+console.log('progressBar element:', progressBar); // ★デバッグ用ログ追加
 
 cv.addEventListener("mousemove", onMouseMove);
 cv.addEventListener("click", onClick);
@@ -42,10 +44,10 @@ class Board  {
                     this.history.push(k+i);
                 }
                 this.lastPos = k + i; // 追加
-                return; // ここでreturn値を削除
+                return true; // 手が成功したことを示す
             }
         }
-        // 無効な手の場合もreturn値を削除
+        return false; // 手が失敗したことを示す (例: 列が満杯)
     }
 
     undo() {
@@ -233,7 +235,6 @@ function drawStones() {
     }
     // 勝利判定
     const winner = board.winCheck();
-    console.log("Winner:", winner);
     if (winner !== 0) {
         board_id.innerText = winner === 1 ? "Black wins!" : "White wins!";
     }
@@ -287,8 +288,89 @@ function onRandom(){
 }
 
 
-function onCpu(){
+async function onCpu() {
+    console.log('onCpu function called');
+    if (!progressBar) {
+        console.error('progressBar element not found in onCpu');
+        return;
+    }
 
+    // 思考開始時にプログレスバーの値を0にリセット
+    progressBar.value = 0;
+    console.log('progressBar value reset to 0. Current style:', progressBar.style.cssText);
+
+    const iterations = 100000; // シミュレーション回数
+    const rootNode = new MCTSNode(board.clone());
+
+    // ブラウザが progressBar.value = 0 の状態を描画するのを待つ
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    console.log('MCTS processing started');
+    for (let i = 0; i < iterations; i++) {
+        let node = rootNode;
+        let currentBoardState = rootNode.boardState.clone();
+
+        // 1. 選択 (Selection)
+        while (node.untriedMoves.length === 0 && node.children.length > 0) {
+            if (node.boardState.winCheck() !== 0) break;
+            node = node.selectChild();
+            currentBoardState.move(node.move);
+        }
+
+        // 2. 展開 (Expansion)
+        let expandedNode = node;
+        if (node.boardState.winCheck() === 0 && node.untriedMoves.length > 0) {
+            const move = node.untriedMoves[Math.floor(Math.random() * node.untriedMoves.length)];
+            currentBoardState.move(move);
+            expandedNode = node.addChild(move, currentBoardState.clone());
+        }
+
+        // 3. シミュレーション (Simulation)
+        let winner = expandedNode.boardState.winCheck();
+        if (winner === 0) {
+            let simulationBoard = expandedNode.boardState.clone();
+            winner = simulationBoard.randomPlayout();
+        }
+
+        // 4. バックプロパゲーション (Backpropagation)
+        let backpropNode = expandedNode;
+        while (backpropNode !== null) {
+            backpropNode.update(winner);
+            backpropNode = backpropNode.parent;
+        }
+
+        // プログレスバーの値を更新
+        // ループのパフォーマンスへの影響を考慮し、更新頻度を調整 (例: 100回ごと)
+        if ((i % 100 === 0) || i === iterations - 1) {
+            progressBar.value = ((i + 1) / iterations) * 100;
+            // ブラウザに描画の機会を与えるために、イベントループに制御を一時的に戻す
+            await new Promise(resolve => setTimeout(resolve, 0));
+        }
+    }
+    console.log('MCTS processing finished');
+
+    // 最善手を選択
+    let bestMove = null;
+    let maxVisits = -1;
+    for (const child of rootNode.children) {
+        if (child.visits > maxVisits) {
+            maxVisits = child.visits;
+            bestMove = child.move;
+        }
+    }
+
+    if (bestMove !== null) {
+        board.move(bestMove);
+        drawStones();
+    } else {
+        console.log("CPU: No legal moves found by MCTS.");
+        board.randomMove();
+        drawStones();
+    }
+
+    // 思考完了後、プログレスバーを100%にする (非表示にはしない)
+    progressBar.value = 100;
+    console.log('progressBar value set to 100 at the end. It should remain visible.');
 }
 
 function onPlayout() {
@@ -368,7 +450,64 @@ function generateWinPatternsPerCell() {
 // グローバルで一度だけ生成
 const WIN_PATTERNS_PER_CELL = generateWinPatternsPerCell();
 
-// console.log(WIN_PATTERNS_PER_CELL[0]); // 例としてセル0のパターンを表示
+class MCTSNode {
+    constructor(boardState, parent = null, move = null) {
+        this.boardState = boardState; // Boardオブジェクトのスナップショット (cloneされたもの)
+        this.parent = parent;         // 親ノード
+        this.move = move;             // このノードに至るための手 (親からの遷移)
+        this.children = [];           // 子ノードの配列
+        this.wins = 0;                // このノードを経由して勝利した回数
+        this.visits = 0;              // このノードを訪問した回数
+        this.untriedMoves = boardState.createLegalMoves(); // まだ試していない合法手
+    }
+
+    // UCT (Upper Confidence Bound 1 applied to Trees) スコアを計算
+    // C は探索パラメータ (sqrt(2) などがよく使われる)
+    uctValue(C = Math.sqrt(2)) {
+        if (this.visits === 0) {
+            return Infinity; // 未訪問のノードを優先
+        }
+        // this.parent.visits が必要
+        const exploitationTerm = this.wins / this.visits;
+        const explorationTerm = C * Math.sqrt(Math.log(this.parent.visits) / this.visits);
+        return exploitationTerm + explorationTerm;
+    }
+
+    selectChild() {
+        // UCT値が最も高い子ノードを選択
+        let selected = this.children[0];
+        let bestValue = -Infinity;
+        for (const child of this.children) {
+            const uct = child.uctValue();
+            if (uct > bestValue) {
+                bestValue = uct;
+                selected = child;
+            }
+        }
+        return selected;
+    }
+
+    addChild(move, childBoardState) {
+        const childNode = new MCTSNode(childBoardState, this, move);
+        this.untriedMoves = this.untriedMoves.filter(m => m !== move);
+        this.children.push(childNode);
+        return childNode;
+    }
+
+    update(result) {
+        this.visits++;
+        // result は現在のノードの手番から見た結果 (1:勝ち, 0:引き分け, -1:負け)
+        // Board.winCheck() の結果 (1:黒勝ち, -1:白勝ち) と手番を考慮して調整が必要
+        // 例えば、現在のノードの手番が黒(1)で、結果が黒勝ち(1)なら +1
+        // 現在のノードの手番が黒(1)で、結果が白勝ち(-1)なら -1 (または0)
+        // ここでは簡単のため、プレイアウト結果がノードの手番の勝利なら1を加算
+        if (this.boardState.turn === -result) { // プレイアウト結果の手番が勝った場合
+             this.wins++;
+        } else if (result === 0) { // 引き分けの場合
+            this.wins += 0.5; // 引き分けを0.5としてカウントする場合
+        }
+    }
+}
 
 // 初期化時にも手番を表示
 drawStones();
