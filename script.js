@@ -6,72 +6,178 @@ const bt_undo = document.getElementById('bt_undo');
 const bt_clear = document.getElementById('bt_clear');
 const bt_random = document.getElementById('bt_random');
 const bt_cpu = document.getElementById('bt_cpu');
+const bt_playout = document.getElementById('bt_playout');
 const board_id = document.getElementById('board_id');
 const cv = document.getElementById('cv');
 
-addEventListener("mousemove",on_mousemove);
-addEventListener("click",on_click);
+cv.addEventListener("mousemove", onMouseMove);
+cv.addEventListener("click", onClick);
 
-bt_undo.addEventListener("click",on_undo);
-bt_clear.addEventListener("click",on_clear);
-bt_random.addEventListener("click",on_random);
-bt_cpu.addEventListener("click",on_cpu);
+bt_undo.addEventListener("click", onUndo);
+bt_clear.addEventListener("click", onClear);
+bt_random.addEventListener("click", onRandom);
+bt_cpu.addEventListener("click", onCpu);
+bt_playout.addEventListener("click", onPlayout);
 
 class Board  {
     constructor() {
-        this.turn = 1; // 1 for black, -1 for white
+        this.turn = 1;
         this.black = 0n;
         this.white = 0n;
+        this.history = [];
+        this.lastPos = -1; // 追加
+    }
+
+    move(k) {
+        for(let i=100;i>=0;i-=25){
+            if(((this.black|this.white) & (1n << BigInt(k+i)))==0n){
+                if(this.turn==1){
+                    this.black |= (1n << BigInt(k+i));
+                    this.turn=-1;
+                    this.history.push(k+i);
+                }
+                else{
+                    this.white |= (1n << BigInt(k+i));
+                    this.turn=1;
+                    this.history.push(k+i);
+                }
+                this.lastPos = k + i; // 追加
+                return; // ここでreturn値を削除
+            }
+        }
+        // 無効な手の場合もreturn値を削除
+    }
+
+    undo() {
+        let n = this.history.pop();
+        if(n === undefined) return;
+        if(this.turn == 1){
+            this.white &= ~(1n << BigInt(n));
+            this.turn = -1;
+        } else {
+            this.black &= ~(1n << BigInt(n));
+            this.turn = 1;
+        }
+        this.lastPos = this.history.length > 0 ? this.history[this.history.length - 1] : -1; // 追加
+    }
+
+    clear() {
+        this.turn = 1;
+        this.black = 0n;
+        this.white = 0n;
+        this.history = [];
+        this.lastPos = -1; // 追加
+    }
+
+    winCheck() {
+        if (this.lastPos === undefined || this.lastPos < 0) return 0;
+        // 直前に打った手で勝ったのは「直前の手番」
+        // this.turnは既に切り替わっているので、-this.turnが勝者
+        let bitboard = this.turn === 1 ? this.white : this.black;
+        for (const pattern of WIN_PATTERNS_PER_CELL[this.lastPos]) {
+            if ((bitboard & pattern) === pattern) {
+                return -this.turn; // 1:黒勝ち, -1:白勝ち
+            }
+        }
+        return 0; // 勝者なし
+    }
+
+    createLegalMoves() {
+        let legalMoves = [];
+        for(let i=0;i<25;i++){
+            if(((this.black | this.white) & (1n << BigInt(i)))== 0n){
+                legalMoves.push(i);
+            }
+        }
+        return legalMoves;
+    }
+
+    randomMove() {
+        const legalMoves = this.createLegalMoves();
+        if (legalMoves.length > 0) {
+            const randomIndex = Math.floor(Math.random() * legalMoves.length);
+            this.move(legalMoves[randomIndex]);
+        }
+        // 合法手がなければ何もしない
+    }
+
+    clone() {
+        const newBoard = new Board();
+        newBoard.turn = this.turn;
+        newBoard.black = this.black;
+        newBoard.white = this.white;
+        newBoard.history = [...this.history];
+        newBoard.lastPos = this.lastPos;
+        return newBoard;
+    }
+
+    randomPlayout() {
+        let boardCopy = this.clone();
+        while (true) {
+            const winner = boardCopy.winCheck();
+            if (winner !== 0) return winner; // 1:黒勝ち, -1:白勝ち
+            const moves = boardCopy.createLegalMoves();
+            if (moves.length === 0) return 0; // 引き分け
+            const idx = Math.floor(Math.random() * moves.length);
+            boardCopy.move(moves[idx]);
+        }
     }
 };
 
-const board= new Board();
-const history = [];
+const board = new Board();
 
 const scene = new THREE.Scene();
-scene.background=new THREE.Color(0x006688);
+scene.background = new THREE.Color(0x006688);
 
-const geo_plane = new THREE.BoxGeometry( 100, 2, 100 );
-const geo_sphere= new THREE.SphereGeometry(4,12,12);
-const geo_pole= new THREE.CylinderGeometry(1, 1, 40, 24);
+const geoPlane = new THREE.BoxGeometry(100, 2, 100);
+const geoSphere = new THREE.SphereGeometry(4, 12, 12);
+const geoPole = new THREE.CylinderGeometry(1, 1, 40, 24);
 
-const mat_plane = new THREE.MeshStandardMaterial({color:0xcccccc,side: THREE.DoubleSide});
-const mat_pole = new THREE.MeshStandardMaterial({color:0xaaaaaa});
-const mat_black = new THREE.MeshStandardMaterial({color:0x222222});
-const mat_white = new THREE.MeshStandardMaterial({color:0xffffff});
+const matPlane = new THREE.MeshStandardMaterial({ color: 0xcccccc });
+const matPole = new THREE.MeshStandardMaterial({ color: 0xaaaaaa });
+const matBlack = new THREE.MeshStandardMaterial({ color: 0x222222 });
+const matWhite = new THREE.MeshStandardMaterial({ color: 0xffffff });
 
-const mesh_plane =new THREE.Mesh(geo_plane,mat_plane);
-scene.add(mesh_plane);
+const meshPlane = new THREE.Mesh(geoPlane, matPlane);
+scene.add(meshPlane);
 
-const mesh_black = [];
-const mesh_white = [];
-const mesh_pole =[];
+const meshBlack = [];
+const meshWhite = [];
+const meshPole = [];
 
-for(let i=0;i<25;i++){
-    mesh_pole.push(new THREE.Mesh(geo_pole,mat_pole));
-    mesh_pole[i].position.x=i%5*16-32;
-    mesh_pole[i].position.z=Math.floor(i/5)*16-32;
-    mesh_pole[i].position.y=20;
-    mesh_pole[i].name=String(i);
-    scene.add(mesh_pole[i]);
+for (let i = 0; i < 25; i++) {
+    meshPole.push(new THREE.Mesh(geoPole, matPole));
+    meshPole[i].name = String(i);
 }
 
-for(let i=0;i<125;i++){
-    mesh_black.push(new THREE.Mesh(geo_sphere,mat_black));
-    mesh_white.push(new THREE.Mesh(geo_sphere,mat_white));
+for (let i = 0; i < 125; i++) {
+    meshBlack.push(new THREE.Mesh(geoSphere, matBlack));
+    meshWhite.push(new THREE.Mesh(geoSphere, matWhite));
 }
 
-for(let i=0;i<5;i++){
-    for(let j=0;j<5;j++){
-        for(let k=0;k<5;k++){
-            let mesh_id = i + j * 5 + k * 25;
-            mesh_black[mesh_id].position.x=i*16-32;
-            mesh_black[mesh_id].position.z=j*16-32;
-            mesh_black[mesh_id].position.y=(5-k)*8-4;
-            
-            mesh_white[mesh_id].position.x=i*16-32;
-            mesh_white[mesh_id].position.z=j*16-32;
-            mesh_white[mesh_id].position.y=(5-k)*8-4;
+for (let i = 0; i < 5; i++) {
+    for (let j = 0; j < 5; j++) {
+        
+        let poleId = i + j * 5;
+        let mx= i * 16 - 32;
+        let mz= j * 16 - 32;
+        
+        meshPole[poleId].position.x = mx;
+        meshPole[poleId].position.z = mz;
+        meshPole[poleId].position.y = 20;
+        scene.add(meshPole[poleId]);
+        
+        for (let k = 0; k < 5; k++) {
+            let meshId = i + j * 5 + k * 25;
+            let my= (5 - k) * 8 - 4;
+
+            meshBlack[meshId].position.x = mx;
+            meshBlack[meshId].position.z = mz;
+            meshBlack[meshId].position.y = my;
+
+            meshWhite[meshId].position.x = mx;
+            meshWhite[meshId].position.z = mz;
+            meshWhite[meshId].position.y = my;
         }
     }
 }
@@ -108,49 +214,35 @@ function mainLoop( ) {
     renderer.render( scene, camera );
 }
 
-function move(k){
-    for(let i=100;i>=0;i-=25){
-        if(((board.black|board.white) & (1n << BigInt(k+i)))==0n){
-            if(board.turn==1){
-                board.black |= (1n << BigInt(k+i));
-                board.turn=-1;
-                history.push(k+i);
-            }
-            else{
-                board.white |= (1n << BigInt(k+i));
-                board.turn=1;
-                history.push(k+i);
-            }
-            return k+i
-        }
-    }
-    return -1; // 無効な手
-}
-
-function draw_stones(){
+function drawStones() {
     for(let i=0;i<125;i++){
-        scene.remove(mesh_black[i]);
-        scene.remove(mesh_white[i]);
+        scene.remove(meshBlack[i]);
+        scene.remove(meshWhite[i]);
     }
     for(let i=0;i<125;i++){
         if(board.black & (1n << BigInt(i))){
-            scene.add(mesh_black[i]);
+            scene.add(meshBlack[i]);
         }
         if(board.white & (1n << BigInt(i))){
-            scene.add(mesh_white[i]);
+            scene.add(meshWhite[i]);
         }
     }
     // 手番表示を追加
     if (board_id) {
         board_id.innerText = (board.turn === 1 ? "Black" : "White");
     }
+    // 勝利判定
+    const winner = board.winCheck();
+    console.log("Winner:", winner);
+    if (winner !== 0) {
+        board_id.innerText = winner === 1 ? "Black wins!" : "White wins!";
+    }
 }
 
-function on_mousemove(e){
+function onMouseMove(e){
     if(e.buttons>0){
         ang_lon+=e.movementX/2;
         ang_lat+=e.movementY/2;
-        //console.log(ang_lon,ang_lat);
         if(ang_lat>90) ang_lat=90;
         if(ang_lat<-90) ang_lat=-90;
         if(ang_lon>360) ang_lon-=360;
@@ -158,7 +250,7 @@ function on_mousemove(e){
     }
 }
 
-function on_click(e){
+function onClick(e){
     const raycaster = new THREE.Raycaster();
     const vector = new THREE.Vector2(
       (e.offsetX / 800) * 2 - 1,
@@ -173,90 +265,47 @@ function on_click(e){
         let o_name= intersects[0].object.name;
         let j=Number(o_name);
         if(j>=0 && j<25 && o_name!=""){
-            let last_pos=move(j);
-            draw_stones();
-            if(win_check(last_pos)) {
-                board_id.innerText = (board.turn === -1 ? "Black" : "White") + " wins!";
-            }
+            board.move(j);
+            drawStones();
         }
     }
 }
 
-function undo(){
-    let n;
-    n=history.pop();
-    if(n===undefined) return;
-    if(board.turn==1){
-        board.white &= ~(1n << BigInt(n));
-        board.turn=-1;
-    }
-    else{
-        board.black &= ~(1n << BigInt(n));
-        board.turn=1;
-    }
+function onUndo(){
+    board.undo();
+    drawStones();
 }
 
-function on_undo(){
-    undo();
-    draw_stones();
+function onClear(){
+    board.clear();
+    drawStones();
+}
+
+function onRandom(){
+    board.randomMove();
+    drawStones();
 }
 
 
-function clear_board(){
-    board.turn=1;
-    board.black=0n;
-    board.white=0n;
-    history.splice(0);
+function onCpu(){
+
 }
 
-function on_clear(){
-    clear_board();
-    draw_stones();
-}
-
-function createLegalMoves(){
-    let legalMoves = [];
-    for(let i=0;i<25;i++){
-        if(((board.black | board.white) & (1n << BigInt(i)))== 0n){
-            legalMoves.push(i);
+function onPlayout() {
+    let blackWins = 0;
+    let whiteWins = 0;
+    let draws = 0;
+    for(let i = 0; i < 100; i++) {
+        const winner = board.randomPlayout();
+        if (winner === 1) {
+            blackWins++;
+        } else if (winner === -1) {
+            whiteWins++;
+        } else {
+            draws++;
         }
     }
-    console.log("Legal Moves:", legalMoves);
-    return legalMoves;
-}
-
-function random_move(){
-    let legalmove=createLegalMoves();
-    let length=legalmove.length
-    let last_pos = -1; // 最後の手を記録する変数
-    if(length>0){
-        let randomIndex = Math.floor(Math.random()*length);
-        last_pos=move(legalmove[randomIndex]);
-        return last_pos;
-    }
-    return -1; // もし合法手がなければ-1を返す
-}
-
-function on_random(){
-    let last_pos = random_move();
-    if(win_check(last_pos)) {
-        board_id.innerText = (board.turn === -1 ? "Black" : "White") + " wins!";
-    }
-    draw_stones();
-}
-
-function win_check(last_pos) {
-    let bitboard = board.turn === -1 ? board.black : board.white;
-    for (const pattern of WIN_PATTERNS_PER_CELL[last_pos]) {
-        if ((bitboard & pattern) === pattern) {
-            return true;
-        }
-    }
-    return false;
-}
-
-function on_cpu(){
-
+    board_id.innerText =`Black Wins: ${blackWins}, White Wins: ${whiteWins}, Draws: ${draws}`;
 }
 
 
@@ -319,7 +368,7 @@ function generateWinPatternsPerCell() {
 // グローバルで一度だけ生成
 const WIN_PATTERNS_PER_CELL = generateWinPatternsPerCell();
 
-console.log(WIN_PATTERNS_PER_CELL[0]); // 例としてセル0のパターンを表示
+// console.log(WIN_PATTERNS_PER_CELL[0]); // 例としてセル0のパターンを表示
 
 // 初期化時にも手番を表示
-draw_stones();
+drawStones();
