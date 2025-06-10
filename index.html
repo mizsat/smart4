@@ -12,13 +12,16 @@
      </head>
     <body>
         <canvas id="cv"></canvas>
-        <button id="bt_undo">undo</button>
-        <button id="bt_clear">clear</button>
-        <button id="bt_random">random</button>
-        <button id="bt_cpu">cpu</button>
-        <button id="bt_playout">playout</button>
-        <div id="board_id">0</div>
-        <!-- プログレスバーは常に表示されるように display:none を削除 -->
-        <progress id="progressBar" value="0" max="100"></progress>
+        <div>
+            <button id="bt_undo">undo</button>
+            <button id="bt_clear">clear</button>
+            <button id="bt_random">random</button>
+            <button id="bt_cpu">cpu</button>
+            <button id="bt_playout">playout</button>
+        </div>
+        <div>
+            <progress id="progressBar" value="0" max="100"></progress>
+        </div>
+        <div id="board_id"></div>
     </body>
 </html>

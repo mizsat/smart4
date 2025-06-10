@@ -292,12 +292,55 @@ async function onCpu() {
     console.log('onCpu function called');
     if (!progressBar) {
         console.error('progressBar element not found in onCpu');
+    }
+    if (!bt_cpu) {
+        console.error('bt_cpu element not found');
         return;
     }
 
-    // 思考開始時にプログレスバーの値を0にリセット
-    progressBar.value = 0;
-    console.log('progressBar value reset to 0. Current style:', progressBar.style.cssText);
+    bt_cpu.disabled = true;
+
+    if (progressBar) {
+        progressBar.value = 0;
+        console.log('progressBar value reset to 0. Current style:', progressBar.style.cssText);
+    }
+
+    // --- 定跡の確認 (1手目と2手目) ---
+    const totalMoves = board.history.length;
+    let bookMove = -1; // 定跡手がない場合は -1
+
+    if (totalMoves === 0 && board.turn === 1) { // CPUが先手(黒)の初手
+        bookMove = 12; // 常に12の列に打つ
+        console.log("Opening book: CPU's first move (Black) -> 12");
+    } else if (totalMoves === 1 && board.turn === -1) { // CPUが後手(白)の初手 (相手が1手打った後)
+        const opponentFirstMove = board.history[0] % 25; // 相手の初手 (0-24の列番号)
+        if (opponentFirstMove === 12) {
+            bookMove = 6; // 相手の初手が12なら、6の列に打つ
+            console.log("Opening book: CPU's first move (White) after opponent played 12 -> 6");
+        } else {
+            bookMove = 12; // 相手の初手が12以外なら、12の列に打つ
+            console.log(`Opening book: CPU's first move (White) after opponent played ${opponentFirstMove} -> 12`);
+        }
+    }
+
+    if (bookMove !== -1) {
+        // 定跡手が合法か一応確認 (特に2手目で12が埋まっている場合など)
+        // Board.move は不正な手なら false を返すので、それで判定も可能
+        const success = board.move(bookMove);
+        if (success) {
+            drawStones();
+            if (progressBar) {
+                progressBar.value = 100;
+            }
+            bt_cpu.disabled = false;
+            console.log("Played from opening book.");
+            return; // 定跡を使ったのでMCTSは実行しない
+        } else {
+            console.log(`Opening book move ${bookMove} was illegal. Proceeding to MCTS.`);
+            // 定跡手が打てなかった場合はMCTSへ
+        }
+    }
+    // --- 定跡の確認ここまで ---
 
     const iterations = 100000; // シミュレーション回数
     const rootNode = new MCTSNode(board.clone());
@@ -340,8 +383,7 @@ async function onCpu() {
         }
 
         // プログレスバーの値を更新
-        // ループのパフォーマンスへの影響を考慮し、更新頻度を調整 (例: 100回ごと)
-        if ((i % 100 === 0) || i === iterations - 1) {
+        if (progressBar && ((i % 100 === 0) || i === iterations - 1)) {
             progressBar.value = ((i + 1) / iterations) * 100;
             // ブラウザに描画の機会を与えるために、イベントループに制御を一時的に戻す
             await new Promise(resolve => setTimeout(resolve, 0));
@@ -349,18 +391,17 @@ async function onCpu() {
     }
     console.log('MCTS processing finished');
 
-    // 最善手を選択
-    let bestMove = null;
+    let bestMoveMCTS = null;
     let maxVisits = -1;
     for (const child of rootNode.children) {
         if (child.visits > maxVisits) {
             maxVisits = child.visits;
-            bestMove = child.move;
+            bestMoveMCTS = child.move;
         }
     }
 
-    if (bestMove !== null) {
-        board.move(bestMove);
+    if (bestMoveMCTS !== null) {
+        board.move(bestMoveMCTS);
         drawStones();
     } else {
         console.log("CPU: No legal moves found by MCTS.");
@@ -368,9 +409,12 @@ async function onCpu() {
         drawStones();
     }
 
-    // 思考完了後、プログレスバーを100%にする (非表示にはしない)
-    progressBar.value = 100;
-    console.log('progressBar value set to 100 at the end. It should remain visible.');
+    if (progressBar) {
+        progressBar.value = 100;
+        console.log('progressBar value set to 100 at the end. It should remain visible.');
+    }
+
+    bt_cpu.disabled = false;
 }
 
 function onPlayout() {
