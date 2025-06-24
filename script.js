@@ -184,20 +184,23 @@ const meshPoleLabels = [];
 for (let i = 0; i < 25; i++) {
     meshPole.push(new THREE.Mesh(geoPole, matPole));
     meshPole[i].name = String(i);
-    // --- 番号ラベルの追加 ---
+    // --- 番号ラベルの追加（やや大きめフォント・スプライトは8,8,1のまま） ---
     const canvas = document.createElement('canvas');
-    canvas.width = 64;
-    canvas.height = 64;
+    canvas.width = 128;
+    canvas.height = 128;
     const ctx = canvas.getContext('2d');
-    ctx.font = 'bold 24px sans-serif'; // フォントサイズを大きく
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.font = 'bold 48px sans-serif'; // フォントサイズをやや大きく
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillStyle = 'rgba(255,255,255,0.95)';
-    ctx.fillText(i.toString(), 32, 32);
+    ctx.fillText(i.toString(), 64, 64);
     const texture = new THREE.CanvasTexture(canvas);
+    texture.minFilter = THREE.LinearFilter;
+    texture.magFilter = THREE.LinearFilter;
     const material = new THREE.SpriteMaterial({ map: texture, transparent: true });
     const sprite = new THREE.Sprite(material);
-    sprite.scale.set(10, 10, 1); // サイズも少し大きく
+    sprite.scale.set(8, 8, 1); // スプライトサイズはそのまま
     meshPoleLabels.push(sprite);
 }
 
