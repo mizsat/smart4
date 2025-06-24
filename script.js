@@ -146,10 +146,29 @@ scene.add(meshPlane);
 const meshBlack = [];
 const meshWhite = [];
 const meshPole = [];
+const meshPoleLabels = [];
 
 for (let i = 0; i < 25; i++) {
     meshPole.push(new THREE.Mesh(geoPole, matPole));
     meshPole[i].name = String(i);
+    // --- 番号ラベルの追加 ---
+    const canvas = document.createElement('canvas');
+    canvas.width = 64;
+    canvas.height = 64;
+    const ctx = canvas.getContext('2d');
+    ctx.font = 'bold 20px sans-serif'; // フォントサイズを小さく
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = 'rgba(255,255,255,0.95)';
+    ctx.strokeStyle = 'black';
+    ctx.lineWidth = 3;
+    ctx.strokeText(i.toString(), 32, 32);
+    ctx.fillText(i.toString(), 32, 32);
+    const texture = new THREE.CanvasTexture(canvas);
+    const material = new THREE.SpriteMaterial({ map: texture, transparent: true });
+    const sprite = new THREE.Sprite(material);
+    sprite.scale.set(8, 8, 1); // サイズも少し小さく
+    meshPoleLabels.push(sprite);
 }
 
 for (let i = 0; i < 125; i++) {
@@ -168,6 +187,11 @@ for (let i = 0; i < 5; i++) {
         meshPole[poleId].position.z = mz;
         meshPole[poleId].position.y = 20;
         scene.add(meshPole[poleId]);
+        // --- ラベルの位置調整と追加 ---
+        meshPoleLabels[poleId].position.x = mx;
+        meshPoleLabels[poleId].position.z = mz;
+        meshPoleLabels[poleId].position.y = 42; // ポールの上に表示
+        scene.add(meshPoleLabels[poleId]);
         
         for (let k = 0; k < 5; k++) {
             let meshId = i + j * 5 + k * 25;
