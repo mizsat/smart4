@@ -4,9 +4,7 @@ import * as THREE from 'https://unpkg.com/three@0.152.2/build/three.module.js';
 
 const bt_undo = document.getElementById('bt_undo');
 const bt_clear = document.getElementById('bt_clear');
-const bt_random = document.getElementById('bt_random');
 const bt_cpu = document.getElementById('bt_cpu');
-const bt_playout = document.getElementById('bt_playout');
 const bt_redo = document.getElementById('bt_redo');
 const board_id = document.getElementById('board_id');
 const cv = document.getElementById('cv');
@@ -18,9 +16,19 @@ cv.addEventListener("click", onClick);
 
 bt_undo.addEventListener("click", onUndo);
 bt_clear.addEventListener("click", onClear);
-bt_random.addEventListener("click", onRandom);
-bt_cpu.addEventListener("click", onCpu);
-bt_playout.addEventListener("click", onPlayout);
+bt_cpu.addEventListener("click", function() {
+    if (bt_cpu.disabled) return;
+    if (bt_cpu.dataset.mctsRunning === '1') {
+        // 計算中なら中断フラグを立てる
+        window.mctsAbort = true;
+        return;
+    }
+    window.mctsAbort = false;
+    bt_cpu.dataset.mctsRunning = '1';
+    onCpu().then(() => {
+        delete bt_cpu.dataset.mctsRunning;
+    });
+});
 bt_redo.addEventListener("click", onRedo);
 
 class Board  {
@@ -176,7 +184,7 @@ for (let i = 0; i < 25; i++) {
     canvas.width = 64;
     canvas.height = 64;
     const ctx = canvas.getContext('2d');
-    ctx.font = 'bold 20px sans-serif'; // フォントサイズを小さく
+    ctx.font = 'bold 24px sans-serif'; // フォントサイズを大きく
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillStyle = 'rgba(255,255,255,0.95)';
@@ -184,7 +192,7 @@ for (let i = 0; i < 25; i++) {
     const texture = new THREE.CanvasTexture(canvas);
     const material = new THREE.SpriteMaterial({ map: texture, transparent: true });
     const sprite = new THREE.Sprite(material);
-    sprite.scale.set(8, 8, 1); // サイズも少し小さく
+    sprite.scale.set(10, 10, 1); // サイズも少し大きく
     meshPoleLabels.push(sprite);
 }
 
@@ -328,11 +336,7 @@ function onClear(){
     drawStones();
 }
 
-function onRandom(){
-    board.randomMove();
-    drawStones();
-}
-
+function onRandom(){}
 
 async function onCpu() {
     console.log('onCpu function called');
@@ -344,51 +348,49 @@ async function onCpu() {
         return;
     }
 
-    bt_cpu.disabled = true;
-
     if (progressBar) {
         progressBar.value = 0;
         console.log('progressBar value reset to 0. Current style:', progressBar.style.cssText);
     }
 
     // --- 定跡の確認 (1手目と2手目) ---
-    const totalMoves = board.history.length;
-    let bookMove = -1; // 定跡手がない場合は -1
+    // const totalMoves = board.history.length;
+    // let bookMove = -1; // 定跡手がない場合は -1
 
-    if (totalMoves === 0 && board.turn === 1) { // CPUが先手(黒)の初手
-        bookMove = 12; // 常に12の列に打つ
-        console.log("Opening book: CPU's first move (Black) -> 12");
-    } else if (totalMoves === 1 && board.turn === -1) { // CPUが後手(白)の初手 (相手が1手打った後)
-        const opponentFirstMove = board.history[0] % 25; // 相手の初手 (0-24の列番号)
-        if (opponentFirstMove === 12) {
-            bookMove = 6; // 相手の初手が12なら、6の列に打つ
-            console.log("Opening book: CPU's first move (White) after opponent played 12 -> 6");
-        } else {
-            bookMove = 12; // 相手の初手が12以外なら、12の列に打つ
-            console.log(`Opening book: CPU's first move (White) after opponent played ${opponentFirstMove} -> 12`);
-        }
-    }
+    // if (totalMoves === 0 && board.turn === 1) { // CPUが先手(黒)の初手
+    //     bookMove = 12; // 常に12の列に打つ
+    //     console.log("Opening book: CPU's first move (Black) -> 12");
+    // } else if (totalMoves === 1 && board.turn === -1) { // CPUが後手(白)の初手 (相手が1手打った後)
+    //     const opponentFirstMove = board.history[0] % 25; // 相手の初手 (0-24の列番号)
+    //     if (opponentFirstMove === 12) {
+    //         bookMove = 6; // 相手の初手が12なら、6の列に打つ
+    //         console.log("Opening book: CPU's first move (White) after opponent played 12 -> 6");
+    //     } else {
+    //         bookMove = 12; // 相手の初手が12以外なら、12に打つ
+    //         console.log(`Opening book: CPU's first move (White) after opponent played ${opponentFirstMove} -> 12`);
+    //     }
+    // }
 
-    if (bookMove !== -1) {
-        // 定跡手が合法か一応確認 (特に2手目で12が埋まっている場合など)
-        // Board.move は不正な手なら false を返すので、それで判定も可能
-        const success = board.move(bookMove);
-        if (success) {
-            drawStones();
-            if (progressBar) {
-                progressBar.value = 100;
-            }
-            bt_cpu.disabled = false;
-            console.log("Played from opening book.");
-            return; // 定跡を使ったのでMCTSは実行しない
-        } else {
-            console.log(`Opening book move ${bookMove} was illegal. Proceeding to MCTS.`);
-            // 定跡手が打てなかった場合はMCTSへ
-        }
-    }
+    // if (bookMove !== -1) {
+    //     // 定跡手が合法か一応確認 (特に2手目で12が埋まっている場合など)
+    //     // Board.move は不正な手なら false を返すので、それで判定も可能
+    //     const success = board.move(bookMove);
+    //     if (success) {
+    //         drawStones();
+    //         if (progressBar) {
+    //             progressBar.value = 100;
+    //         }
+    //         bt_cpu.disabled = false;
+    //         console.log("Played from opening book.");
+    //         return; // 定跡を使ったのでMCTSは実行しない
+    //     } else {
+    //         console.log(`Opening book move ${bookMove} was illegal. Proceeding to MCTS.`);
+    //         // 定跡手が打てなかった場合はMCTSへ
+    //     }
+    // }
     // --- 定跡の確認ここまで ---
 
-    const iterations = 100000; // シミュレーション回数
+    const iterations = 10000000; // シミュレーション回数を1000万回に
     const rootNode = new MCTSNode(board.clone());
 
     // ブラウザが progressBar.value = 0 の状態を描画するのを待つ
@@ -434,6 +436,31 @@ async function onCpu() {
             // ブラウザに描画の機会を与えるために、イベントループに制御を一時的に戻す
             await new Promise(resolve => setTimeout(resolve, 0));
         }
+
+        // 進捗表示（1000回ごと）
+        if (i % 1000 === 0) {
+            let resultText = 'Candidate Moves Win Rate<br>';
+            if (rootNode.children.length === 0) {
+                resultText += 'No legal moves';
+            } else {
+                const sorted = rootNode.children.slice().sort((a, b) => {
+                    const rateA = a.visits > 0 ? a.wins / a.visits : 0;
+                    const rateB = b.visits > 0 ? b.wins / b.visits : 0;
+                    return rateB - rateA;
+                });
+                for (const child of sorted) {
+                    const move = child.move;
+                    const visits = child.visits;
+                    const wins = child.wins;
+                    const rate = visits > 0 ? (wins / visits) : 0;
+                    resultText += `Move ${move}: Win Rate ${(rate * 100).toFixed(1)}% (Visits ${visits})<br>`;
+                }
+            }
+            document.getElementById('rate_area').innerHTML = resultText;
+            await new Promise(resolve => setTimeout(resolve, 0));
+        }
+
+        if (window.mctsAbort) break;
     }
     console.log('MCTS processing finished');
 
@@ -455,31 +482,27 @@ async function onCpu() {
         drawStones();
     }
 
-    if (progressBar) {
-        progressBar.value = 100;
-        console.log('progressBar value set to 100 at the end. It should remain visible.');
-    }
-
-    bt_cpu.disabled = false;
-}
-
-function onPlayout() {
-    let blackWins = 0;
-    let whiteWins = 0;
-    let draws = 0;
-    for(let i = 0; i < 100; i++) {
-        const winner = board.randomPlayout();
-        if (winner === 1) {
-            blackWins++;
-        } else if (winner === -1) {
-            whiteWins++;
-        } else {
-            draws++;
+    // --- MCTS計算終了後、候補手の勝率を表示 ---
+    let resultText = 'Candidate Moves Win Rate<br>';
+    if (rootNode.children.length === 0) {
+        resultText += 'No legal moves';
+    } else {
+        // 勝率順にソート
+        const sorted = rootNode.children.slice().sort((a, b) => {
+            const rateA = a.visits > 0 ? a.wins / a.visits : 0;
+            const rateB = b.visits > 0 ? b.wins / b.visits : 0;
+            return rateB - rateA;
+        });
+        for (const child of sorted) {
+            const move = child.move;
+            const visits = child.visits;
+            const wins = child.wins;
+            const rate = visits > 0 ? (wins / visits) : 0;
+            resultText += `Move ${move}: Win Rate ${(rate * 100).toFixed(1)}% (Visits ${visits})<br>`;
         }
     }
-    board_id.innerText =`Black Wins: ${blackWins}, White Wins: ${whiteWins}, Draws: ${draws}`;
+    document.getElementById('rate_area').innerHTML = resultText;
 }
-
 
 
 // --- 勝ちパターン生成（各セルごとに、そのセルを含むパターンのみ保持） ---
