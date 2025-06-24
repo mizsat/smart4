@@ -482,11 +482,12 @@ async function onCpu(autoOnlyRate = false) {
             if (rootNode.children.length === 0) {
                 resultText += 'No legal moves';
             } else {
+                // 勝率順にソートし、上位5件のみ表示
                 const sorted = rootNode.children.slice().sort((a, b) => {
                     const rateA = a.visits > 0 ? a.wins / a.visits : 0;
                     const rateB = b.visits > 0 ? b.wins / b.visits : 0;
                     return rateB - rateA;
-                });
+                }).slice(0, 5);
                 for (const child of sorted) {
                     const move = child.move;
                     const visits = child.visits;
@@ -529,12 +530,12 @@ async function onCpu(autoOnlyRate = false) {
     if (rootNode.children.length === 0) {
         resultText += 'No legal moves';
     } else {
-        // 勝率順にソート
+        // 勝率順にソートし、上位5件のみ表示
         const sorted = rootNode.children.slice().sort((a, b) => {
             const rateA = a.visits > 0 ? a.wins / a.visits : 0;
             const rateB = b.visits > 0 ? b.wins / b.visits : 0;
             return rateB - rateA;
-        });
+        }).slice(0, 5);
         for (const child of sorted) {
             const move = child.move;
             const visits = child.visits;
