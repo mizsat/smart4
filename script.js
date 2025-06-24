@@ -17,17 +17,22 @@ cv.addEventListener("click", onClick);
 bt_undo.addEventListener("click", onUndo);
 bt_clear.addEventListener("click", onClear);
 bt_cpu.addEventListener("click", function() {
-    if (bt_cpu.disabled) return;
-    if (bt_cpu.dataset.mctsRunning === '1') {
-        // 計算中なら中断フラグを立てる
+    const wasOff = !window.mctsMode;
+    window.mctsMode = !window.mctsMode;
+    if (window.mctsMode) {
+        bt_cpu.style.color = '#fff';
+        // OFF→ON時は必ず一度だけ勝率計算・表示（計算中なら中断してから）
+        if (bt_cpu.dataset.mctsRunning === '1') {
+            window.mctsAbort = true;
+            setTimeout(() => { onCpu(true); }, 0);
+        } else {
+            onCpu(true);
+        }
+    } else {
+        bt_cpu.style.color = '';
+        document.getElementById('rate_area').innerHTML = '';
         window.mctsAbort = true;
-        return;
     }
-    window.mctsAbort = false;
-    bt_cpu.dataset.mctsRunning = '1';
-    onCpu().then(() => {
-        delete bt_cpu.dataset.mctsRunning;
-    });
 });
 bt_redo.addEventListener("click", onRedo);
 
@@ -287,6 +292,9 @@ function drawStones() {
     if (winner !== 0) {
         board_id.innerText = winner === 1 ? "Black wins!" : "White wins!";
     }
+    // UNDO/REDOボタンの有効・無効制御
+    if (bt_undo) bt_undo.disabled = (board.history.length === 0);
+    if (bt_redo) bt_redo.disabled = (board.redoStack.length === 0);
 }
 
 function onMouseMove(e){
@@ -300,23 +308,34 @@ function onMouseMove(e){
     }
 }
 
+function requestMctsRecalc() {
+    if (bt_cpu.dataset.mctsRunning === '1') {
+        window.mctsAbort = true;
+        window.mctsRecalcPending = true;
+    } else {
+        onCpu(true);
+    }
+}
+
 function onClick(e){
     const raycaster = new THREE.Raycaster();
     const vector = new THREE.Vector2(
       (e.offsetX / 800) * 2 - 1,
       (e.offsetY / 600) * (-2) + 1
     );
-    
     raycaster.setFromCamera(vector, camera);
-    
     const intersects = raycaster.intersectObjects(scene.children);
-    
     if (intersects.length) {
         let o_name= intersects[0].object.name;
         let j=Number(o_name);
         if(j>=0 && j<25 && o_name!=""){
             board.move(j);
             drawStones();
+            if (window.mctsMode) {
+                requestMctsRecalc();
+            } else {
+                document.getElementById('rate_area').innerHTML = '';
+            }
         }
     }
 }
@@ -324,21 +343,41 @@ function onClick(e){
 function onUndo(){
     board.undo();
     drawStones();
+    if (window.mctsMode) {
+        requestMctsRecalc();
+    } else {
+        document.getElementById('rate_area').innerHTML = '';
+    }
 }
 
 function onRedo(){
     board.redo();
     drawStones();
+    if (window.mctsMode) {
+        requestMctsRecalc();
+    } else {
+        document.getElementById('rate_area').innerHTML = '';
+    }
 }
 
 function onClear(){
     board.clear();
     drawStones();
+    if (window.mctsMode) {
+        requestMctsRecalc();
+    } else {
+        document.getElementById('rate_area').innerHTML = '';
+    }
 }
 
 function onRandom(){}
 
-async function onCpu() {
+async function onCpu(autoOnlyRate = false) {
+    if (!window.mctsMode) return;
+    if (bt_cpu.dataset.mctsRunning === '1') return;
+    bt_cpu.dataset.mctsRunning = '1';
+    window.mctsAbort = false;
+
     console.log('onCpu function called');
     if (!progressBar) {
         console.error('progressBar element not found in onCpu');
@@ -473,13 +512,16 @@ async function onCpu() {
         }
     }
 
-    if (bestMoveMCTS !== null) {
-        board.move(bestMoveMCTS);
-        drawStones();
-    } else {
-        console.log("CPU: No legal moves found by MCTS.");
-        board.randomMove();
-        drawStones();
+    // 手を進める処理
+    if (!autoOnlyRate) {
+        if (bestMoveMCTS !== null) {
+            board.move(bestMoveMCTS);
+            drawStones();
+        } else {
+            console.log("CPU: No legal moves found by MCTS.");
+            board.randomMove();
+            drawStones();
+        }
     }
 
     // --- MCTS計算終了後、候補手の勝率を表示 ---
@@ -502,6 +544,12 @@ async function onCpu() {
         }
     }
     document.getElementById('rate_area').innerHTML = resultText;
+    delete bt_cpu.dataset.mctsRunning;
+    // 再計算待ちフラグが立っていれば、1回だけ再計算
+    if (window.mctsRecalcPending) {
+        window.mctsRecalcPending = false;
+        onCpu(true);
+    }
 }
 
 
