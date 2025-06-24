@@ -7,6 +7,7 @@ const bt_clear = document.getElementById('bt_clear');
 const bt_random = document.getElementById('bt_random');
 const bt_cpu = document.getElementById('bt_cpu');
 const bt_playout = document.getElementById('bt_playout');
+const bt_redo = document.getElementById('bt_redo');
 const board_id = document.getElementById('board_id');
 const cv = document.getElementById('cv');
 const progressBar = document.getElementById('progressBar'); // プログレスバー要素を取得
@@ -20,6 +21,7 @@ bt_clear.addEventListener("click", onClear);
 bt_random.addEventListener("click", onRandom);
 bt_cpu.addEventListener("click", onCpu);
 bt_playout.addEventListener("click", onPlayout);
+bt_redo.addEventListener("click", onRedo);
 
 class Board  {
     constructor() {
@@ -27,6 +29,7 @@ class Board  {
         this.black = 0n;
         this.white = 0n;
         this.history = [];
+        this.redoStack = []; // 追加: リドゥ用スタック
         this.lastPos = -1; // 追加
     }
 
@@ -53,6 +56,7 @@ class Board  {
     undo() {
         let n = this.history.pop();
         if(n === undefined) return;
+        this.redoStack.push(n); // 追加: アンドゥした手をリドゥスタックに追加
         if(this.turn == 1){
             this.white &= ~(1n << BigInt(n));
             this.turn = -1;
@@ -63,11 +67,27 @@ class Board  {
         this.lastPos = this.history.length > 0 ? this.history[this.history.length - 1] : -1; // 追加
     }
 
+    redo() {
+        let n = this.redoStack.pop();
+        if(n === undefined) return;
+        if(this.turn == 1){
+            this.black |= (1n << BigInt(n));
+            this.turn = -1;
+            this.history.push(n); // 追加: リドゥした手をヒストリーに追加
+        } else {
+            this.white |= (1n << BigInt(n));
+            this.turn = 1;
+            this.history.push(n); // 追加: リドゥした手をヒストリーに追加
+        }
+        this.lastPos = n; // 追加: 最後の手を更新
+    }
+
     clear() {
         this.turn = 1;
         this.black = 0n;
         this.white = 0n;
         this.history = [];
+        this.redoStack = []; // 追加: リドゥスタックをクリア
         this.lastPos = -1; // 追加
     }
 
@@ -160,9 +180,6 @@ for (let i = 0; i < 25; i++) {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillStyle = 'rgba(255,255,255,0.95)';
-    ctx.strokeStyle = 'black';
-    ctx.lineWidth = 3;
-    ctx.strokeText(i.toString(), 32, 32);
     ctx.fillText(i.toString(), 32, 32);
     const texture = new THREE.CanvasTexture(canvas);
     const material = new THREE.SpriteMaterial({ map: texture, transparent: true });
@@ -298,6 +315,11 @@ function onClick(e){
 
 function onUndo(){
     board.undo();
+    drawStones();
+}
+
+function onRedo(){
+    board.redo();
     drawStones();
 }
 
